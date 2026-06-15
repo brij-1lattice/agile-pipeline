@@ -90,18 +90,18 @@ The simplest way to take a sprint all the way through, in a single session:
 > The board (`INDEX.md`) is intentionally stale *between* QA stages — the four QA skills never write
 > it, so they can't race on it. Refresh it yourself with `/manage-stories index` once a pass settles.
 
-**Watch it live.** For a visual board that always reflects the current state on disk, run the viewer
-— it parses the story files directly (no `INDEX.md` dependency, so it's never stale) and refreshes on
-reload:
+**Browse it in a browser.** For a visual, read-only spec browser, run the viewer — a config-driven
+static server (it auto-detects the project and reads its paths from `.claude/pipeline.config.md`):
 
 ```bash
-python3 scripts/view-sprint.py              # opens a live board in your browser (Ctrl-C to stop)
-python3 scripts/view-sprint.py --sprint 2   # just one sprint
-python3 scripts/view-sprint.py build        # or write a static sprint-board.html
+python3 scripts/viewer/serve.py start    # opens a 3-pane spec browser (stop / status too)
+python3 scripts/viewer/serve.py          # or foreground (Ctrl+C to stop)
 ```
 
-It shows every story's status, owner, SP, acceptance-criteria and task progress, dependencies, and
-its position through the gauntlet (CR → Gen → Test → Verify) — read-only, stdlib-only, no install.
+Left pane: topics grouped by sprint. Middle: the filtered story list (search · sprint · status ·
+owner, with options derived from the data). Right: full story detail — metadata chips, the
+depends-on / blocks graph, and the rendered markdown. Refresh after `/manage-stories index`. See
+`scripts/viewer/README.md`.
 
 ---
 
@@ -281,7 +281,7 @@ The whole pipeline is ~21 files.
 | `pipeline.seeds.template.md` | Optional seed manifest for `scaffold-plan.py` to copy stashed sources into place. |
 | `operator.template.md` | Per-operator profile — copy into `.claude/operators/<name>.md` for multi-operator mode. |
 | `scripts/scaffold-plan.py` | Scaffolds the planning tree; its `operator` subcommand sets up worktrees. |
-| `scripts/view-sprint.py` | Live, read-only **sprint board** in your browser — per-story status and QA-gauntlet progress, parsed straight from the story files. |
+| `scripts/viewer/` | Read-only **spec browser** in your browser (`serve.py` + `index.html` + `viewer.jsx` + css) — topics-by-sprint, filtered story list, and full story detail with dependency graph, parsed straight from `stories/INDEX.md` + the story files. |
 
 ---
 

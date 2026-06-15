@@ -1,0 +1,158 @@
+/* tokens.css — neutral, Claude-inspired design tokens.
+   Portable across projects: drop this viewer into any /manage-stories repo.
+
+   Theming:
+     <html data-theme="auto">   (default) — follows prefers-color-scheme
+     <html data-theme="light">             — forced light
+     <html data-theme="dark">              — forced dark
+*/
+
+:root {
+  /* surfaces + ink */
+  --bg:              #FAF9F5;
+  --surface:         #FFFFFF;
+  --surface-2:       #F4F1E9;
+  --ink:             #1F1E1B;
+  --ink-muted:       #6B665D;
+  --ink-faint:       #9B9588;
+  --border:          #E8E4DC;
+  --border-strong:   #D6CFC0;
+
+  /* accent — warm rust */
+  --accent:          #CC785C;
+  --accent-bg:       #FBF1EC;
+  --accent-strong:   #B05A3E;
+
+  /* status pairs (background, foreground) — low saturation */
+  --status-draft-bg:       #F4F1E9;
+  --status-draft-fg:       #6B665D;
+  --status-ready-bg:       #F5E9DD;
+  --status-ready-fg:       #8B4F2A;
+  --status-in-progress-bg: #F5E9DD;
+  --status-in-progress-fg: #8B4F2A;
+  --status-done-bg:        #E8EDE2;
+  --status-done-fg:        #4F6A3C;
+  --status-blocked-bg:     #F3DCDC;
+  --status-blocked-fg:     #9A3232;
+  --status-deferred-bg:    #ECEAF2;
+  --status-deferred-fg:    #5C5470;
+
+  /* generic + special chips */
+  --chip-bg:         #F4F1E9;
+  --chip-fg:         #6B665D;
+  --chip-link-bg:    #FBF1EC;
+  --chip-link-fg:    #B05A3E;
+  --chip-broken-bg:  #F3DCDC;
+  --chip-broken-fg:  #9A3232;
+
+  /* banners */
+  --warning-bg:      #FAEFD9;
+  --warning-border:  #E6C988;
+  --warning-fg:      #7A5A1F;
+  --error-bg:        #F8E1E1;
+  --error-border:    #D89797;
+  --error-fg:        #8A2F2F;
+
+  /* shadow + radii */
+  --shadow-card:     0 1px 3px rgba(31,30,27,0.04), 0 1px 2px rgba(31,30,27,0.06);
+  --shadow-dropdown: 0 4px 16px rgba(31,30,27,0.08);
+  --radius-sm:       6px;
+  --radius-md:       10px;
+  --radius-lg:       14px;
+  --radius-full:     999px;
+
+  /* typography */
+  --font-display:    ui-serif, Georgia, "Times New Roman", serif;
+  --font-heading:    'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-body:       'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono:       ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+/* ─── dark mode (forced) ─── */
+:root[data-theme="dark"] {
+  --bg:              #1F1E1B;
+  --surface:         #2A2925;
+  --surface-2:       #34322D;
+  --ink:             #F2EFE8;
+  --ink-muted:       #A39E92;
+  --ink-faint:       #6B665D;
+  --border:          #3A3833;
+  --border-strong:   #4A4843;
+
+  --accent:          #E5917A;
+  --accent-bg:       #3A2A24;
+  --accent-strong:   #F0A48E;
+
+  --status-draft-bg:       #34322D;
+  --status-draft-fg:       #A39E92;
+  --status-ready-bg:       #4A3A30;
+  --status-ready-fg:       #E0B083;
+  --status-in-progress-bg: #4A3A30;
+  --status-in-progress-fg: #E0B083;
+  --status-done-bg:        #2F3A2F;
+  --status-done-fg:        #9DBE83;
+  --status-blocked-bg:     #4A2D2D;
+  --status-blocked-fg:     #D89797;
+  --status-deferred-bg:    #34323A;
+  --status-deferred-fg:    #A09BB0;
+
+  --chip-bg:         #34322D;
+  --chip-fg:         #A39E92;
+  --chip-link-bg:    #3A2A24;
+  --chip-link-fg:    #F0A48E;
+  --chip-broken-bg:  #4A2D2D;
+  --chip-broken-fg:  #E5A2A2;
+
+  --warning-bg:      #3A2F1A;
+  --warning-border:  #6A5A3A;
+  --warning-fg:      #E5C88C;
+  --error-bg:        #3A2222;
+  --error-border:    #6A3A3A;
+  --error-fg:        #E5A2A2;
+
+  --shadow-card:     0 1px 3px rgba(0,0,0,0.40), 0 1px 2px rgba(0,0,0,0.30);
+  --shadow-dropdown: 0 4px 16px rgba(0,0,0,0.50);
+}
+
+/* ─── dark mode via OS when data-theme="auto" ─── */
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="auto"] {
+    --bg:              #1F1E1B;
+    --surface:         #2A2925;
+    --surface-2:       #34322D;
+    --ink:             #F2EFE8;
+    --ink-muted:       #A39E92;
+    --ink-faint:       #6B665D;
+    --border:          #3A3833;
+    --border-strong:   #4A4843;
+    --accent:          #E5917A;
+    --accent-bg:       #3A2A24;
+    --accent-strong:   #F0A48E;
+    --status-draft-bg:       #34322D;
+    --status-draft-fg:       #A39E92;
+    --status-ready-bg:       #4A3A30;
+    --status-ready-fg:       #E0B083;
+    --status-in-progress-bg: #4A3A30;
+    --status-in-progress-fg: #E0B083;
+    --status-done-bg:        #2F3A2F;
+    --status-done-fg:        #9DBE83;
+    --status-blocked-bg:     #4A2D2D;
+    --status-blocked-fg:     #D89797;
+    --status-deferred-bg:    #34323A;
+    --status-deferred-fg:    #A09BB0;
+    --chip-bg:         #34322D;
+    --chip-fg:         #A39E92;
+    --chip-link-bg:    #3A2A24;
+    --chip-link-fg:    #F0A48E;
+    --chip-broken-bg:  #4A2D2D;
+    --chip-broken-fg:  #E5A2A2;
+    --warning-bg:      #3A2F1A;
+    --warning-border:  #6A5A3A;
+    --warning-fg:      #E5C88C;
+    --error-bg:        #3A2222;
+    --error-border:    #6A3A3A;
+    --error-fg:        #E5A2A2;
+    --shadow-card:     0 1px 3px rgba(0,0,0,0.40), 0 1px 2px rgba(0,0,0,0.30);
+    --shadow-dropdown: 0 4px 16px rgba(0,0,0,0.50);
+  }
+}
