@@ -90,6 +90,19 @@ The simplest way to take a sprint all the way through, in a single session:
 > The board (`INDEX.md`) is intentionally stale *between* QA stages — the four QA skills never write
 > it, so they can't race on it. Refresh it yourself with `/manage-stories index` once a pass settles.
 
+**Watch it live.** For a visual board that always reflects the current state on disk, run the viewer
+— it parses the story files directly (no `INDEX.md` dependency, so it's never stale) and refreshes on
+reload:
+
+```bash
+python3 scripts/view-sprint.py              # opens a live board in your browser (Ctrl-C to stop)
+python3 scripts/view-sprint.py --sprint 2   # just one sprint
+python3 scripts/view-sprint.py build        # or write a static sprint-board.html
+```
+
+It shows every story's status, owner, SP, acceptance-criteria and task progress, dependencies, and
+its position through the gauntlet (CR → Gen → Test → Verify) — read-only, stdlib-only, no install.
+
 ---
 
 ## 3. The QA gauntlet — why four passes?
@@ -268,6 +281,7 @@ The whole pipeline is ~21 files.
 | `pipeline.seeds.template.md` | Optional seed manifest for `scaffold-plan.py` to copy stashed sources into place. |
 | `operator.template.md` | Per-operator profile — copy into `.claude/operators/<name>.md` for multi-operator mode. |
 | `scripts/scaffold-plan.py` | Scaffolds the planning tree; its `operator` subcommand sets up worktrees. |
+| `scripts/view-sprint.py` | Live, read-only **sprint board** in your browser — per-story status and QA-gauntlet progress, parsed straight from the story files. |
 
 ---
 
