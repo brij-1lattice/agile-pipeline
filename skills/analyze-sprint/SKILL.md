@@ -126,6 +126,7 @@ the summary. Restore later via `/manage-stories restore <id>`.
 
 1. **Regenerate `{index_path}`** per the `manage-stories` index flow (including the Backlog section).
 2. **Print a summary:** analyzed vs. deferred, the `exec_model` split (with the escalation-model picks named), questions resolved, doc additions (doc + section), design linkages resolved, total tasks, total `(manual)`/`(visual)` ACs. List deferred stories with reasons + next steps.
+3. **Hand off:** point to `/execute-sprint <N>`, then `/clear` before it — analysis is saved in story frontmatter, so the build runs in fresh context. Each stage runs fresh from `status`; clearing keeps the orchestrator lean.
 
 ## Operating rules
 

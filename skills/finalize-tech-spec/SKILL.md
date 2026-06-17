@@ -93,7 +93,8 @@ silently overwriting.
 > user can update `tech_spec_sections`.
 
 After writing, show a one-line summary per section and ask if any needs revision before marking
-the doc Approved.
+the doc Approved. Once Approved, point to `/manage-stories` next — and `/clear` first: the spec is
+saved to disk, so a fresh context keeps story creation lean.
 
 ## Operating rules
 

@@ -75,7 +75,7 @@ skills, so a new project supplies its bindings here.
 3. **Derive topics & sprints from the blueprint.** Read `{blueprint}`, extract its phases (→ `sprint_labels`) and modules/feature areas (→ `topics`), and **propose** the topic→sprint table + sprint labels for the user to confirm or edit. Never invent — only what the blueprint supports.
 4. **Pick the stack profile.** List the profiles available under `.claude/pipeline/stack-profiles/`; the user picks one, or chooses "author a new profile" (point them at `stack-profiles/README.md` and pause until it exists).
 5. **Confirm the tech-spec section map.** Read the tech spec's headings and propose the `tech_spec_sections` role→ref map (stack/schema/auth/api/ui_rules/testing/env/open_questions); the user corrects any that differ.
-6. **Ask the rest** (offer the template defaults): `default_owner`, `external_services`, `sp_cap` (5), `max_fix_attempts` (3), `stale_days` (30), the model keys (build + the four QA-gauntlet stage models).
+6. **Ask the rest** (offer the template defaults): `default_owner`, `external_services`, `sp_cap` (5), `sprint_story_cap` (12), `max_fix_attempts` (3), `stale_days` (30), the model keys (build + the four QA-gauntlet stage models).
 7. **Write `.claude/pipeline.config.md`** from `pipeline.config.template.md` with the confirmed values; show it back for approval.
 8. **Continue to init** (below) using the freshly-written config.
 
@@ -86,7 +86,7 @@ The heaviest path. Run on first invocation when `{stories_dir}` is missing.
 1. **Read the blueprint** (`{blueprint}`) — extract its phase mapping (→ sprint numbers, per config `sprint_labels`) and module/feature specs (→ topics, per config `topics`).
 2. **Read the tech spec** (`{tech_spec}`) — especially its success-criteria and `api` sections (each endpoint usually implies ≥1 story). Build an in-memory **capability index** from the `stack`, `structure`, `schema`, `auth`, `api`, and `security` sections (resolve section refs via `tech_spec_sections`) so the tech-feasibility check runs per-story without re-reading.
 3. **Derive topics** from the config `topics` table (topic → default sprint → blueprint source).
-4. **Propose a draft story list per topic** (typically 3–8), each ≤ `{sp_cap}` SP. Unit-of-work signals: one story per route × purpose (list/detail/filter/submit); one per API endpoint with its own auth+validation; one per non-trivial reusable component family. Cross-check against the blueprint's surface inventory so no screen is missing.
+4. **Propose a draft story list per topic** (typically 3–8), each ≤ `{sp_cap}` SP. Unit-of-work signals: one story per route × purpose (list/detail/filter/submit); one per API endpoint with its own auth+validation; one per non-trivial reusable component family. Cross-check against the blueprint's surface inventory so no screen is missing. **If a single sprint would hold > `{sprint_story_cap}` stories, recommend splitting it across sprints (or operators) before writing** — oversized sprints bloat the downstream serial loops and fan-out; don't hard-block, but surface it.
 5. **Ask for the primary owner once** (default `{default_owner}`). Present the full proposed list via `AskUserQuestion` (topic-by-topic if large); confirm sizes, splits, sprint assignments (pre-filled from config `topics`; always ask for `ask`-marked topics), and per-story owner.
 6. **Per story, run the tech-feasibility gate** (below).
 7. **Per story, run the design-linkage gate** (`design-linkage-gate.md`); create `{design_dir}` with `.gitkeep` if missing.
@@ -97,7 +97,7 @@ The heaviest path. Run on first invocation when `{stories_dir}` is missing.
 ## Add flow
 
 1. Ask: topic? title? user story? estimated SP? sprint (pre-fill from config `topics`; ask for `ask`-topics)? owner (default to most-recently-named this session, else ask)?
-2. **SP > `{sp_cap}`** → divert to split before writing.
+2. **SP > `{sp_cap}`** → divert to split before writing. **If this story would push its sprint past `{sprint_story_cap}` stories**, flag it and suggest a different sprint (or operator) before writing — don't hard-block.
 3. **Tech-feasibility gate** (below). 4. **Design-linkage gate** (`design-linkage-gate.md`). 5. **Suggest dependencies**; user confirms. 6. **Next sequence number** for the topic. 7. **Write the file**, regenerate `{index_path}`.
 
 ## Split flow
@@ -136,6 +136,7 @@ frontmatter + Tasks. Report; **never modify**.
 | Rule | Condition | Severity |
 |---|---|---|
 | oversize | `story_points > {sp_cap}` | error |
+| oversize-sprint | a sprint holds > `{sprint_story_cap}` stories (the serial build/QA loops and parallel fan-out scale with story count → orchestrator context bloat) | warning |
 | broken-ref | a dependency ID has no matching file (search `{stories_dir}` + `{backlog_dir}`) | error |
 | cycle | dependency graph has a cycle | error |
 | status-inversion | `done` but a dependency isn't `done` | error |
@@ -178,6 +179,7 @@ sprint → topic.
 - **Done only when** `tasks_populated: true` and every task `completed`/`cancelled`.
 - **Design-linkage + tech-feasibility on every create** — never silently write an unsupported or UI-unlinked story.
 - **Sprint from config `topics`** — pre-fill; ask for `ask`-topics; never invent. **Multi-operator** (any `.claude/operators/*.md`): a story's `owner` + `sprint` *is* its operator sprint `owner/N` (see `operator-profile.md`); set both so each story belongs to exactly one operator's sprint.
+- **Owner default resolves `@git`.** When `{default_owner}` is `@git` (git-identity mode), the `owner:` pre-fill is **slug(`git config user.name`)** per `operator-profile.md` (the `@git` token + slugify rule) — write that concrete slug into the story, never the literal `@git`. Empty git user.name → ask. The user can still override the owner per story.
 - **Never exceed `{sp_cap}` SP** — divert to split.
 - **Dependencies are real IDs at write time.** **`{archive_dir}`/`{backlog_dir}`** hold superseded/deferred files — never delete history.
 - **`{index_path}` is generated, not edited.** **First-run never overwrites** an existing story tree.

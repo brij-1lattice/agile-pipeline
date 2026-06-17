@@ -65,12 +65,20 @@ Never invent a sprint.
 
 ## Pre-flight — align all stories
 
-**Multi-operator guard (any `.claude/operators/*.md`).** The sprint is `owner/N`; **before any
-mutation**, assert the current git branch is the operator's profile branch (`sprint/<owner>-N`) and
-you're in their worktree — a mismatch is a **hard stop** (run `scaffold-plan.py operator <owner>
---sprint N`, then `cd` into the printed worktree). The dev server + Supabase bind the operator's
-profile ports. Builds merge to `main` via PR. See `operator-profile.md`. (Single-operator: skip this
-guard; build on the current branch as before.)
+**Multi-operator guard (any `.claude/operators/*.md`).** The sprint is `owner/N`. How you isolate
+depends on `operator_isolation` (config; absent → `worktree`):
+- **`shared`** (per-person operators, each teammate in their own clone on their own device): **do
+  not** create or require a sibling worktree, and **do not** assert a `sprint/<owner>-N` branch. Just
+  resolve `owner/N`, build **in the current checkout on the current branch**, writing straight into
+  `{app_dir}`. The owner only **scopes which stories** you build (step 1); merge to `main` via PR. The
+  dev server binds the operator profile's ports.
+- **`worktree`** (classic, several operators on one machine): **before any mutation**, assert the
+  current git branch is the operator's profile branch (`sprint/<owner>-N`) and you're in their
+  worktree — a mismatch is a **hard stop** (run `scaffold-plan.py operator <owner> --sprint N`, then
+  `cd` into the printed worktree). The dev server + ports bind the operator's profile.
+
+Either way builds merge to `main` via PR. See `operator-profile.md`. (Single-operator — no
+`operators/` dir: skip this guard; build on the current branch as before.)
 
 1. **Collect** every `{stories_dir}**/story-*.md` (exclude `{archive_dir}`, `{backlog_dir}`) whose `sprint:` matches (multi-operator: and whose `owner:` matches the resolved `owner/N`). Run the `manage-stories` lint (errors only); a structural error halts — fix via `/manage-stories` first. (Cycles are handled in step 3.)
 2. **Require built-ready:** `analyzed: true` and `status: ready | in-progress | code-review-failed | testing-failed | verification-failed`. `draft`/un-analyzed → don't execute; list them, route to `/analyze-sprint <N>`. Already-`done`/`code-reviewed`/`tests-generated`/`tested`/`verified` → skip (report the count). A **`*-failed`** story (code-review / testing / verification) re-enters here: its build scope is the **union of open `- [ ]` items across `## Code Review Feedback`, `## Testing Feedback`, and `## Verification Feedback`** — the builder fixes those, checks them off, and returns it to `done`, from which it re-flows the QA gauntlet from stage 1 (`/code-review-sprint`).
@@ -88,17 +96,23 @@ guard; build on the current branch as before.)
 > - **This overrides any general guidance about batching agents for speed.** Builders share one branch — there is no speed win worth a corrupted tree.
 > - **Multi-operator note:** isolation is *between* operators (each in their own worktree + branch, so two operators' sprints never collide); *within* a single operator's worktree this serial one-builder-at-a-time rule still holds in full.
 > - **Strictly serial:** spawn one → await its `RESULT` → handle it → only then spawn the next.
+> - **Liveness:** while awaiting, you are blocked *inside* the Agent tool-call and cannot poll or
+>   kill the child — so hangs are prevented at the source (the builder bounds every command with
+>   `timeout {gate_timeout}` and always emits a RESULT, even on timeout/failure). If a dispatch
+>   still returns no parseable RESULT, step 4's no-RESULT case recovers it; never sit re-awaiting a
+>   dead child.
 
 Walk the ordered list as a serial loop. The orchestrator does **not** read design/docs or write
 `{app_dir}` code — that's the subagent's job. For the **current** story:
 
 1. **Read just the routing facts** — `exec_model` (default `{default_exec_model}`) and confirm its `dependencies:` are all `done`. A not-`done` dependency means it sits under a blocked/skipped root → **skip it** (part of that subtree; don't halt).
 2. **Pre-dispatch self-check:** confirm the previous story's `RESULT` was received and handled. About to emit > 1 Agent call? Stop — emit only the first.
-3. **Spawn exactly one `sprint-story-builder`** with `model` = the story's `exec_model`, passing `story_id`, the file path, `exec_model`, and `escalation: false`. It runs Steps 0–5 and returns a `RESULT` block.
+3. **Spawn exactly one `sprint-story-builder`** with `model` = the story's `exec_model`, passing `story_id`, the file path, `exec_model`, `escalation: false`, and (multi-operator) the resolved **`owner`** for the `Operator:` commit trailer (builder falls back to the story's `owner:` if absent). It runs Steps 0–5 and returns a `RESULT` block.
 4. **Parse `RESULT`** and act on `status`:
    - **`green`** → confirm cheaply (`git log -1`; the `tests:` line). Print the checkpoint. Don't re-run the suite. Carry forward the `manual_checks` line.
    - **`failed`** → if model was `{default_exec_model}`, **escalate** (below). If already `{escalation_model}`, the story is `blocked` → **skip its subtree and continue**.
    - **`blocked`** → recorded in `## Notes` (`status: blocked`). **Skip its subtree and continue** — don't halt the whole sprint.
+   - **No parseable `RESULT`** (the dispatch returned empty / truncated / garbled, or the harness surfaced a dead subagent) → **do not re-await and do not hang.** The builder bounds every command with `timeout {gate_timeout}`, so this is the rare died-mid-run case. Inspect the tree to see what (if anything) it committed — `git status` / `git log -1` from `{app_dir}` — keep any landed per-task commits, then set the story `status: blocked` with `## Notes`: "agent returned no RESULT — recovered, re-run `/execute-sprint`". **Skip its subtree and continue.** (One clean re-dispatch is reasonable before blocking if the tree shows no partial mutation; never loop on it.)
 5. **STOP — barrier.** Don't begin the next story until this one's `RESULT` is handled and its checkpoint printed. Then return to step 1 for the next *eligible* story (fresh message, single Agent call).
 
 ### Partial-sprint continuation — one blocked story doesn't kill the sprint
@@ -140,13 +154,14 @@ never edit an AC to make a test pass.
 1. **Regenerate `{index_path}`** per the `manage-stories` index flow.
 2. **Print a summary** (from the `RESULT` blocks — never re-derived): stories done/blocked/skipped, model each ran on + which escalated, tasks completed, tests passing, commits. List blocked stories (reason + next step) and skipped stories (the blocked dependency that caused them).
 3. **Retro line:** escalation rate; for each escalated story, which `exec_model` signal was present-but-unflagged at analysis (feeds analyze-sprint's signal list); total `(manual)`/`(visual)` checks outstanding across the `RESULT` `manual_checks` lines; a one-line blocked-reason tally.
-4. **Point to the QA gauntlet:** build-green ≠ correct-safe-and-faithful — run `/code-review-sprint <N>` next (then `/generate-test-sprint`, `/qa-sprint`, `/verify-sprint`). Stories are `done`, at the head of the gauntlet. Any story that re-ran from a `*-failed` state this pass re-flows from stage 1 — re-check it through the chain (`--recheck`/`--reverify`).
+4. **Point to the QA gauntlet:** build-green ≠ correct-safe-and-faithful — run `/code-review-sprint <N>` next (then `/generate-test-sprint`, `/qa-sprint`, `/verify-sprint`). Stories are `done`, at the head of the gauntlet. Any story that re-ran from a `*-failed` state this pass re-flows from stage 1 — re-check it through the chain (`--recheck`/`--reverify`). **`/clear` between each gauntlet stage** — every stage runs fresh from `status`, so clearing keeps the orchestrator lean.
 5. *(Optional)* one end-of-sprint full gate run from `{app_dir}` as a belt-and-suspenders check.
 
 ## Operating rules
 
 - **One subagent at a time, dependency-first, never parallel** (see HARD RULE). Never build a story before its dependencies are `done`.
 - **The orchestrator stays thin** — dispatch, parse, escalate, regenerate INDEX; never read design/docs or write `{app_dir}` code (except the first-run Scaffold). Run on `{orchestrator_model}`.
+- **Safe to interrupt.** All state lives in story frontmatter (`status`, task markers, feedback) and git — never in context. Stop anytime, `/clear`, and re-run `/execute-sprint <N>`: it re-selects from `status`, skips `done`+ stories, and resumes the rest. Clearing mid-sprint loses nothing and keeps the serial loop's context flat.
 - **Only `analyzed: true` stories execute.** **Code obeys `{tech_spec}`** (highest precedence); visuals follow `{design_doc}` + linked screens; the prototype never overrides the tech spec.
 - **Tests mandatory** per the tech spec `testing` section + the stack profile. **Never edit an AC to make it pass** — halt and flag (reconciliation is `/analyze-sprint`'s job).
 - **This skill never edits the planning docs.** **Atomic commits** referencing the story id. **Never touch `{backlog_dir}`/`{archive_dir}`.** **Never invent a sprint.**

@@ -11,11 +11,14 @@ You build **exactly one** story to `done`, or stop and report a failure/blocker.
 by the `execute-sprint` orchestrator, one instance per story, **never in parallel** — every
 builder writes atomic commits into the **same `{app_dir}` tree on the same branch**, so two at
 once would corrupt each other. (Detect a sibling builder mutating `{app_dir}` mid-run → hard
-blocker; stop and report.) **Multi-operator:** that same-tree hazard is *within* your operator's
-worktree only — different operators run in separate worktrees/branches and never collide; build on
-the branch you were spawned in and stamp the operator in your commit trailer. Your context is
-isolated: the only thing the orchestrator learns from you is your final **RESULT block** (and the
-commits you leave on disk).
+blocker; stop and report.) **Multi-operator** (any `.claude/operators/*.md`): build on the branch you
+were spawned in and **stamp `Operator: <owner>` in every commit trailer** — `<owner>` is the value the
+orchestrator passed, else the story's `owner:` frontmatter (already a concrete slug, e.g.
+`brij-1lattice`). In `shared` isolation this trailer is the primary attribution (no per-operator
+branch); in `worktree` isolation the same-tree hazard is *within* your operator's worktree only —
+different operators run in separate worktrees/branches and never collide. Your context is isolated:
+the only thing the orchestrator learns from you is your final **RESULT block** (and the commits you
+leave on disk).
 
 ## Configuration
 
@@ -56,8 +59,8 @@ resume rather than restart.
 `## Verification Feedback`. If `status` is a `*-failed` state (`code-review-failed` /
 `testing-failed` / `verification-failed`), or any of the three sections carries open `- [ ]` items,
 **the union of those open items IS your build scope** (alongside any unfinished `## Tasks`) — a
-`*-failed` re-run exists to clear them. Fix each, then check it off `- [x]` (keep the line).
-**Don't widen** beyond the open items + ACs.
+`*-failed` re-run exists to clear them. Fix each, then check it off `- [x]` (Step 5 collapses the
+resolved lines into the section's tally). **Don't widen** beyond the open items + ACs.
 
 ### Step 1 — Mark in-progress
 `status: ready | code-review-failed | testing-failed | verification-failed → in-progress` (never
@@ -70,7 +73,7 @@ Walk `## Tasks` in order, skipping `[completed]`/`[cancelled]`. For each:
 - Write the production code per `{tech_spec}`, porting the visual design from the linked screen + `{design_doc}` tokens.
 - **Reuse, don't duplicate** — earlier stories are committed to `{app_dir}`; `grep`/read them and compose from the design system + primitives they built.
 - Flip `[started] → [completed]` when its code and tests land.
-- **Atomic commit per task** (or coherent unit) referencing the story id + AC(s). End commit messages with the repo's Co-Authored-By trailer convention (match `git log`; if `git log` is empty — the scaffold's first commit — use the documented trailer directly).
+- **Atomic commit per task** (or coherent unit) referencing the story id + AC(s). End commit messages with the repo's Co-Authored-By trailer convention (match `git log`; if `git log` is empty — the scaffold's first commit — use the documented trailer directly). **In multi-operator mode, also add an `Operator: <owner>` trailer** (the resolved owner slug) so the owner is attributable on a shared branch.
 - **Amending tasks is allowed, widening scope is not.** Mark a task `[cancelled]` (one-line reason) when the committed codebase already satisfies it; split a task into several commits when cleaner. **Never add scope beyond the ACs**, and name every cancellation/split in the RESULT `notes`.
 - Never invent behaviour the Description/ACs don't specify. Spec silent or self-contradictory → hard blocker (don't guess).
 
@@ -84,7 +87,12 @@ look (Step 4), don't downgrade to a written IOU; `(manual)` → a documented `##
 purely-visual as `(visual)`.
 
 ### Step 4 — Run the gate & verify every AC
-- Run the stack profile's **Gate commands** (in order) from `{app_dir}`.
+- Run the stack profile's **Gate commands** (in order) from `{app_dir}`. Use the profile's
+  **inner-loop (scoped) gate** for fast feedback during the fix-and-retry cycles, then run the
+  profile's **Final (full) gate exactly once** to green it before Step 5 — a scoped-green story is
+  **not** `done` until the full gate passes. Every command is time-bounded (`timeout {gate_timeout}`,
+  `CI=true`, non-watch) per the profile; a `timeout` kill (exit `124`) is a **failed gate**, handled
+  like any other red gate below — never a reason to hang or to silently retry forever.
 - **Visual check** for `(visual)` ACs and any UI page: use the profile's *Render command* to screenshot the built route, then **view it** against the linked prototype + `{design_doc}` tokens (typography family, accent, spacing, layout fidelity). Confirm by eye. A mismatch → fix it like any failing AC; never check it off, never edit the AC.
 - Walk `## Acceptance criteria`; flip `- [ ] → - [x]` **only** when a passing test, a confirmed screenshot, or a recorded manual check backs it, noting which. **Never edit an AC to make it pass.**
 - A failing gate → fix and re-run, up to **`{max_fix_attempts}` attempts total per build run** (counted from the first full-gate run for this spawn; a green intermediate run does not reset it). Still red → **write the failing tests itemized into `## Testing Feedback`** (one `- [ ]` per failing test + its assertion + `file:line`, per the body-sections contract), then **STOP** and return `status: failed` with the failing output. (A later run — escalation or re-execute — reads those items as its scope.)
@@ -104,6 +112,12 @@ the prior gauntlet verdicts no longer hold — the stages re-stamp them as the s
 INDEX (which projects the four QA columns from `status`) stays honest. Leave `> nit`/`> justified`/`>
 choice` notes in the feedback sections intact (they're non-blocking history, not open work).
 
+**Then collapse resolved history** (per `review-feedback-format.md` → *Trimming resolved history*):
+in each of the three feedback sections, fold the now-resolved `- [x]` lines into a cumulative
+`> resolved: <N> items (git history)` tally and delete the individual `- [x]` lines — git holds the
+detail, and this keeps the sections (which you re-read in full on every re-run) from growing across
+re-flow cycles. Never collapse open `- [ ]` items or the `> nit`/`> justified`/`> choice` notes.
+
 ## Hard blockers — stop and report `blocked`
 A dependency isn't `done` · the gate can't pass after `{max_fix_attempts}` · an AC needs an
 external service (`{external_services}`/hosted infra) unavailable and un-stubbable · the toolchain
@@ -115,7 +129,7 @@ safely committable, return `status: blocked`.
 ## Operating rules
 - **One story only.** Never touch another story file; never spawn subagents.
 - **Only build `analyzed: true` stories** (else `blocked`). **Atomic commits**, story id referenced — durability is via git.
-- **Never check off an unsatisfied AC or an unresolved feedback item; never edit an AC — or a QA-namespace test — to make the gate pass** (the sole QA-test exception is the documented changed-requirement case in Step 4, with a two-sided citation). You **may** write `## Testing Feedback` (failing tests you couldn't green) and check off `## Code Review Feedback` / `## Testing Feedback` / `## Verification Feedback` items you've fixed — but never invent or silently drop a feedback item.
+- **Never check off an unsatisfied AC or an unresolved feedback item; never edit an AC — or a QA-namespace test — to make the gate pass** (the sole QA-test exception is the documented changed-requirement case in Step 4, with a two-sided citation). You **may** write `## Testing Feedback` (failing tests you couldn't green) and check off `## Code Review Feedback` / `## Testing Feedback` / `## Verification Feedback` items you've fixed (collapsed into each section's `> resolved:` tally at Step 5) — but never invent or silently drop a feedback item.
 - **Never touch `{backlog_dir}`/`{archive_dir}`**, and never edit the planning docs (a doc gap → blocker → `/analyze-sprint`). **Don't regenerate `{index_path}`** — that's the orchestrator's job.
 
 ## Return — the RESULT block (all the orchestrator sees)
@@ -139,3 +153,12 @@ notes: <≤2 lines — manual checks, task cancellations/splits, escalation-rele
 
 Set `status: green` only when Step 5 completed. Use `failed` when the gate couldn't be greened
 within `{max_fix_attempts}`. Use `blocked` for any hard blocker.
+
+**Liveness contract — always emit a RESULT.** The orchestrator is blocked awaiting this block and
+cannot interrupt you, so you must never end your turn without it. Run every gate/test/render
+command time-bounded (`timeout {gate_timeout}`, per the profile) so nothing can hang you. If a
+command times out (exit `124`), the toolchain is unavailable, or you hit any unrecoverable state,
+do **not** retry silently or fall quiet — stop, and return a RESULT with `status: failed` (gate
+couldn't be greened) or `blocked` (hard blocker), naming the timed-out/failing command in
+`blocker:`. A RESULT that says "failed — `pnpm e2e` timed out at {gate_timeout}s" is correct and
+recoverable; silence is not.

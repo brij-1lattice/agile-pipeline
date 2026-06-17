@@ -48,9 +48,9 @@ Added by later stages; **preserve them, never strip them**. `lint`/`index` toler
 2. **Description** — prose describing the surface the story covers.
 3. **Acceptance criteria** — `- [ ]` checklist of independently verifiable conditions. Never bare "works correctly". `analyze-sprint` prefixes each line with a verification-method tag (see `ac-method-tags.md`).
 4. **Tasks** — see `task-states.md`; created empty by `manage-stories`, populated by `analyze-sprint`.
-5. **Code Review Feedback** — created empty by `manage-stories`; `- [ ]` checklist of engineering findings written by `code-review-sprint` (see `review-feedback-format.md`). Cleared as a re-run fixes them.
-6. **Testing Feedback** — created empty by `manage-stories`; `- [ ]` checklist of failing tests written by `qa-sprint` (and by the builder on an un-greenable gate). Cleared as a re-run fixes them.
-7. **Verification Feedback** — created empty by `manage-stories`; `- [ ]` checklist of design-parity findings written by `verify-sprint` (see `review-feedback-format.md`). Cleared as a re-run fixes them.
+5. **Code Review Feedback** — created empty by `manage-stories`; `- [ ]` checklist of engineering findings written by `code-review-sprint` (see `review-feedback-format.md`). Cleared as a re-run fixes them (resolved items collapse to a `> resolved: N` tally — see `review-feedback-format.md`).
+6. **Testing Feedback** — created empty by `manage-stories`; `- [ ]` checklist of failing tests written by `qa-sprint` (and by the builder on an un-greenable gate). Cleared as a re-run fixes them (resolved items collapse to a `> resolved: N` tally — see `review-feedback-format.md`).
+7. **Verification Feedback** — created empty by `manage-stories`; `- [ ]` checklist of design-parity findings written by `verify-sprint` (see `review-feedback-format.md`). Cleared as a re-run fixes them (resolved items collapse to a `> resolved: N` tally — see `review-feedback-format.md`).
 8. **Notes** — blueprint links, design rationale, scope cuts, deferral/blocker reasons.
 
 ## Status lifecycle

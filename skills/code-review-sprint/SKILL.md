@@ -48,18 +48,25 @@ a sprint.
 2. Skip `code-reviewed`/`tests-generated`/`tested`/`verified` unless `--recheck`. A `code-review-failed` story must be re-built to `done` (via `/execute-sprint`) before re-review — route it there. Report the skip count.
 3. Stories with no `{app_dir}` diff (pure content/doc) still get a light review (the tech-spec contract still applies); note reduced surface.
 
-## Orchestration — fresh context per story, parallel-safe
+## Orchestration — fresh context per story, dispatched in parallel
 
 Each story is reviewed by **one freshly-spawned subagent** so its judgment isn't anchored by the
 builder's rationalizations. The reviewers are **read-only** — they never write `{app_dir}` or story
-files — so there's **no shared-tree hazard and no serial constraint**: you **may** dispatch several
-reviewers concurrently. The **orchestrator does all writes** (the story's status + `code_review_date`
-+ `## Code Review Feedback` section) after reviews return. **It does not regenerate `{index_path}`**
-(parallel-chain skill — print a one-line `/manage-stories index` reminder instead).
+files — so there's **no shared-tree hazard and no serial constraint**, and unlike the build/run/render
+stages there's no shared port either. **Dispatch them in parallel:** spawn the reviewers
+**concurrently** — multiple `Agent` calls in one assistant message, in waves up to the harness's
+concurrency cap — in any order (the story files are disjoint). **Collect every `REVIEW` block**, then
+the **orchestrator does all writes** (each story's status + `code_review_date` + `## Code Review
+Feedback` section). **It does not regenerate `{index_path}`** (parallel-chain skill — print a one-line
+`/manage-stories index` reminder instead).
 
 Spawn each reviewer (a general read-only subagent) on `{code_review_model}` with the **Per-story
-review protocol** below, plus `story_id`, the file path, and the relevant `{tech_spec}`
-`security`/`api`/`schema`/`auth` sections. Each returns one **REVIEW block**.
+review protocol** below, plus `story_id`, the file path, and **references** to the relevant
+`{tech_spec}` `security`/`api`/`schema`/`auth` sections (by role — the reviewer opens `{tech_spec}`
+and reads them itself; **don't inline the section bodies** into the spawn prompt, which would
+duplicate them across the parallel fan-out). Each returns one **REVIEW block**. (A reviewer that returns
+no parseable REVIEW — dead/empty — is re-dispatched once or recorded as un-reviewed; never block the
+batch on one straggler.)
 
 ## Per-story review protocol (runs inside each reviewer)
 
@@ -109,7 +116,7 @@ For each reviewed story (orchestrator-only — reviewers wrote nothing):
    - ≥1 blocking item → `status: done → code-review-failed`.
    - Either way stamp `code_review_date: <today>`.
 3. **Surface `[choice]` findings to the user** — print them; do **not** auto-write them as actionable `- [ ]` items.
-4. **Print a summary:** stories reviewed, `code-reviewed` vs `code-review-failed`, `[true]` findings by severity, `[choice]` decisions awaiting the user. Point `code-review-failed` stories at `/execute-sprint <N>` to fix and re-`done`, then `/code-review-sprint --recheck`. Point `code-reviewed` stories at `/generate-test-sprint <N>`. End with: "run `/manage-stories index` to refresh the board."
+4. **Print a summary:** stories reviewed, `code-reviewed` vs `code-review-failed`, `[true]` findings by severity, `[choice]` decisions awaiting the user. Point `code-review-failed` stories at `/execute-sprint <N>` to fix and re-`done`, then `/code-review-sprint --recheck`. Point `code-reviewed` stories at `/generate-test-sprint <N>`. End with: "run `/manage-stories index` to refresh the board, then `/clear` before `/generate-test-sprint <N>` — each stage runs fresh from `status`, so clearing keeps the orchestrator lean."
 
 ## The killer self-test
 
@@ -121,7 +128,7 @@ that rubber-stamps is worse than none.
 
 ## Operating rules
 
-- **Read-only reviewers; orchestrator-only writes.** This is what makes parallel review safe.
+- **Read-only reviewers; orchestrator-only writes.** This is what makes parallel review safe — so dispatch them concurrently by default (a batch of `Agent` calls per message), not one at a time.
 - **Every finding cites two references** (build line + tech-spec rule). No summary-only claims; re-verify A/B findings.
 - **Never edit `{app_dir}`; never edit an AC or scope.** Gaps become `## Code Review Feedback` items the next build run fixes.
 - **The only status move is `done → code-reviewed | code-review-failed`** — never revert to an earlier state, never touch a non-`done` story.

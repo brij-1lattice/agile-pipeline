@@ -77,7 +77,10 @@ tech_spec_sections:
 > **Single-operator default.** In multi-operator mode (any `.claude/operators/*.md` exists) sprints
 > become owner-scoped `owner/N`, and each operator's per-sprint goals live in their own profile's
 > `Sprints` table — this table and `sprint_labels` below then act only as defaults for the `sprint:`
-> pre-fill. See `pipeline/reference/operator-profile.md` and `operator.template.md`.
+> pre-fill. How operators isolate is set by `operator_isolation` (Constants below): `worktree` (each
+> on its own machine gets a sibling worktree/branch/ports) or `shared` (each teammate in their own
+> clone builds in the current checkout — pair with `default_owner: "@git"` for git-identity operators).
+> See `pipeline/reference/operator-profile.md` and `operator.template.md`.
 
 | Topic | Default sprint | Source (blueprint) |
 |---|---|---|
@@ -104,16 +107,37 @@ sprint_labels:
 ## Constants & models
 
 ```yaml
-default_owner: brij
+default_owner: brij            # owner of a new story by default. Use a literal handle to pin it, or
+                               # `@git` = slug(git config user.name) resolved at runtime (see
+                               # pipeline/reference/operator-profile.md → @git token + slugify rule),
+                               # so each teammate's git identity is their owner.
+# How operators isolate from each other (absent → worktree):
+#   shared   = build in the current checkout (no git worktree). Use when each teammate has their own
+#              clone on their own device — the per-device clone is the isolation. Code lands directly
+#              in {app_dir}; merge to main via PR.
+#   worktree = the classic mode: each operator builds in a sibling git worktree on its own branch
+#              (for several operators sharing ONE machine).
+operator_isolation: worktree
 sp_cap: 5                 # max story points per story; split if larger
+sprint_story_cap: 12      # soft cap — lint warns above this. The serial build/QA loops and the
+                          # parallel fan-out both scale with stories-per-sprint, so an oversized
+                          # sprint bloats the orchestrator's context; split across sprints/operators.
 max_fix_attempts: 3       # builder gate fix attempts before failed
+gate_timeout: 900         # seconds — hard ceiling per gate/test/render command (wrap each in
+                          # `timeout {gate_timeout}`). A command that exceeds it is KILLED and
+                          # treated as a failed gate, so a hung dev-server/watcher can never block
+                          # a subagent (and thus the orchestrator) forever. Raise for slow e2e suites.
 stale_days: 30            # draft-staleness lint threshold (measured from analyzed_date/git)
 orchestrator_model: sonnet     # execute-sprint orchestrator floor (never haiku)
 default_exec_model: sonnet     # per-story build model when analysis didn't flag opus
 escalation_model: opus         # model a failed default-model build escalates to
 # QA-gauntlet stage models (absent → fall back to escalation_model / default_exec_model):
 code_review_model: opus        # code-review-sprint — analytical, read-only engineering review
-test_gen_model: opus           # generate-test-sprint — adversarial test-case authoring
+test_gen_model: opus           # generate-test-sprint — adversarial test-case authoring (the
+                               # "thinking" half: designing the edge cases). Authors now fan out in
+                               # parallel (write-only, one bulk commit), so latency no longer scales
+                               # with story count — keep opus for depth. Downshift to sonnet only if
+                               # cost/speed outweighs adversarial-test quality on routine sprints.
 test_run_model: sonnet         # qa-sprint — running tests + triaging failures (mechanical)
 verify_model: opus             # verify-sprint — design-parity / verification judgment
 ```

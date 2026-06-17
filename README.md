@@ -90,6 +90,14 @@ The simplest way to take a sprint all the way through, in a single session:
 > The board (`INDEX.md`) is intentionally stale *between* QA stages — the four QA skills never write
 > it, so they can't race on it. Refresh it yourself with `/manage-stories index` once a pass settles.
 
+> **`/clear` between stages.** Every stage rebuilds its working set from story `status` — all state
+> lives in the story files and git, never in context. So `/clear` (or run each stage in its own
+> session) between stages: it loses nothing and keeps each orchestrator's context lean. Running the
+> whole chain in one session — the thing the design works hardest to avoid — stacks every stage's
+> summary and quietly undoes the per-story subagent isolation. The serial stages (`execute-sprint`,
+> `qa-sprint`, `verify-sprint`) are also **safe to interrupt**: stop, `/clear`, re-run the same
+> command, and they resume from `status`, skipping finished stories.
+
 **Browse it in a browser.** For a visual, read-only spec browser, run the viewer — a config-driven
 static server (it auto-detects the project and reads its paths from `.claude/pipeline.config.md`):
 
@@ -127,6 +135,11 @@ file and no orphaned "fix" stories. Each finding is graded:
 - **`[justified]`** — a defensible deviation → a `> justified:` note (non-blocking).
 - **`[choice]`** — a genuine product decision → surfaced to *you*, never auto-actioned.
 
+When a re-run clears blocking items, the builder collapses the resolved `- [x]` lines into a per-section
+`> resolved: N (git history)` tally — git keeps the detail, so feedback sections (which the builder
+re-reads in full on every rebuild) don't grow across re-flow cycles. Open items and `> nit`/
+`> justified`/`> choice` notes are never collapsed.
+
 A story is `<stage>-failed` **only if** its section has at least one open *blocking* (A/B/C) item.
 Testing Feedback is untagged — any failing test blocks. (Full rules:
 `pipeline/reference/review-feedback-format.md`.)
@@ -163,20 +176,38 @@ them at the same time *within one checkout* needs care:
 
 | Command | Changes app files? | Needs a running port? | Safe to run concurrently? |
 |---|---|---|---|
-| `code-review-sprint`   | no (reads diffs)    | no  | **Yes** — multiple sessions are fine |
-| `generate-test-sprint` | **yes** (writes tests) | no  | One at a time; a 2nd session needs its own git worktree |
+| `code-review-sprint`   | no (reads diffs)    | no  | **Yes** — read-only reviewers **fan out in parallel within one run**, and multiple sessions are fine too |
+| `generate-test-sprint` | **yes** (writes tests) | no  | **Authors fan out in parallel within one run** — they're write-only (no git race) and the orchestrator does one bulk commit. A *2nd concurrent session* of the skill still needs its own git worktree |
 | `qa-sprint`            | no (runs tests)     | **yes** | Serial; a 2nd session needs a worktree **+ its own stack/port** |
-| `verify-sprint`        | no (renders)        | **yes** | Serial by default; code-only audits (`design: none-needed`) are free |
+| `verify-sprint`        | no (renders)        | **yes** | Render audits serial by default; **code-only audits (`design: none-needed`) fan out in parallel** (no render, no port) |
+
+> **Why `generate-test-sprint` parallelizes but the others don't.** Test *authoring* needs no
+> running port and each author writes a distinct file, so concurrent authors have no shared resource
+> once you defer the commit — the orchestrator validates once and bulk-commits. The build/run/render
+> stages either share one git branch (builders) or a fixed dev/DB port (qa/verify), so they stay
+> serial unless isolated in a worktree + stack.
 
 ### Multiple operators, fully in parallel
 
-The table above is about one person's checkout. **Different operators run completely in parallel** —
-each in their own git worktree, branch, and ports — so even the file-mutating and rendering stages
-never collide. This is opt-in: with no `.claude/operators/` directory, the pipeline stays
-single-operator.
+The table above is about one person's checkout. **Different operators (people) run completely in
+parallel** — owner-scoped sprints never collide. This is opt-in: with no `.claude/operators/`
+directory, the pipeline stays single-operator. How operators isolate is set by `operator_isolation`
+in `.claude/pipeline.config.md` (absent → `worktree`):
 
-To add an operator, copy `operator.template.md` to `.claude/operators/<name>.md`, fill in their
-branch / ports / sprint goals, then:
+**`shared` — each teammate in their own clone on their own device** (recommended for a distributed
+team). Drop in **one** generic profile `.claude/operators/self.md` with `owner: "@git"` (copy Form A
+of `operator.template.md`) and set `default_owner: "@git"`. Each teammate's git identity *is* their
+operator — `owner` resolves to `slug(git config user.name)` at runtime, zero per-person setup. No
+worktree: build in the current checkout, on your own branch, and PR to `main`.
+
+```bash
+git config user.name "Ashish Kumar"   # → operator ashish-kumar
+/execute-sprint N                      # bare N scopes to YOUR stories (your git slug)
+# …rest of the gauntlet, e.g. /verify-sprint N — builds straight into {app_dir}, PR to main …
+```
+
+**`worktree` — several operators sharing one machine.** Copy Form B of `operator.template.md` to
+`.claude/operators/<name>.md` (one file per person), fill in branch / ports / sprint goals, then:
 
 ```bash
 python3 scaffold-plan.py operator <name> --sprint N   # creates ../<repo>-<name> on sprint/<name>-N, prints ports
@@ -185,9 +216,10 @@ cd ../<repo>-<name>                                    # work inside your own wo
 # …rest of the gauntlet, all addressed <name>/N, e.g. /verify-sprint brij/2 …
 ```
 
-Sprints are addressed **`owner/N`** (e.g. `brij/2`), each carrying a one-line goal from the operator
-profile; the INDEX groups operator → sprint → topic. Merge to `main` via PR once your stories are
-`verified`. Full contract: `pipeline/reference/operator-profile.md`.
+Either way sprints are addressed **`owner/N`** (e.g. `brij/2`), each carrying a one-line goal; the
+INDEX groups operator → sprint → topic, and every build commit carries an `Operator: <owner>` trailer.
+Merge to `main` via PR once your stories are `verified`. Full contract:
+`pipeline/reference/operator-profile.md`.
 
 ---
 
@@ -206,7 +238,7 @@ blueprint / tech_spec / design_doc
 # Sprint labels             # 1: "…"  2: "…"  3: "…"
 
 # Constants & models
-default_owner, sp_cap, max_fix_attempts, stale_days
+default_owner, operator_isolation, sp_cap, sprint_story_cap, max_fix_attempts, stale_days   # default_owner: "@git" = git-identity; operator_isolation: shared | worktree; sprint_story_cap: lint warns above this (oversized sprints bloat context)
 orchestrator_model, default_exec_model, escalation_model        # build models
 code_review_model, test_gen_model, test_run_model, verify_model  # QA models (e.g. opus, opus, sonnet, opus)
 
@@ -264,7 +296,7 @@ The whole pipeline is ~21 files.
 | `topo-order.md` | The dependency ordering both `analyze-sprint` and `execute-sprint` walk. |
 | `index-template.md` | The `INDEX.md` layout and how its review columns are derived. |
 | `review-feedback-format.md` | The three feedback sections: severity legends, tags, gating, QA-test ownership. |
-| `operator-profile.md` | The multi-operator contract (worktrees, owner-scoped sprints). |
+| `operator-profile.md` | The multi-operator contract (the `@git` token, `shared`/`worktree` isolation, owner-scoped sprints). |
 
 **Stack profiles — the only framework-specific part** (`pipeline/stack-profiles/*.md`)
 
@@ -279,7 +311,7 @@ The whole pipeline is ~21 files.
 |---|---|
 | `pipeline.config.template.md` | The per-project binding file — copy to `.claude/pipeline.config.md` and fill in (or bootstrap). |
 | `pipeline.seeds.template.md` | Optional seed manifest for `scaffold-plan.py` to copy stashed sources into place. |
-| `operator.template.md` | Per-operator profile — copy into `.claude/operators/<name>.md` for multi-operator mode. |
+| `operator.template.md` | Operator profile — Form A (generic `@git`/`shared`) → `.claude/operators/self.md`; Form B (per-person/`worktree`) → `.claude/operators/<name>.md`. |
 | `scripts/scaffold-plan.py` | Scaffolds the planning tree; its `operator` subcommand sets up worktrees. |
 | `scripts/viewer/` | Read-only **spec browser** in your browser (`serve.py` + `index.html` + `viewer.jsx` + css) — topics-by-sprint, filtered story list, and full story detail with dependency graph, parsed straight from `stories/INDEX.md` + the story files. |
 
@@ -298,6 +330,15 @@ The whole pipeline is ~21 files.
 - **`--recheck` / `--reverify`** re-run a QA stage on an already-advanced story (e.g. after a fix).
 - **`blocked` ≠ `failed`.** `blocked` means an external service or an ambiguity stopped the work;
   un-block it via `/manage-stories update` once resolved.
+- **Gates can't hang the run.** Every gate/test/render command is non-watch and wrapped in
+  `timeout {gate_timeout}` (config, default 900s), and every worker subagent must always return a
+  `RESULT` — even on a timeout or crash. A killed command becomes a normal gate *failure*, and a
+  subagent that returns no RESULT is recovered (marked `blocked` / `infra-blocked`) so the
+  orchestrator continues instead of waiting forever. Raise `gate_timeout` for genuinely slow suites.
+- **Set Playwright `workers` explicitly.** The gates run e2e with `CI=true` (for non-interactivity),
+  and under `CI=true` **Playwright defaults to a single worker** — serializing your whole e2e suite.
+  Set `fullyParallel: true` + an explicit `workers` in `playwright.config.ts` (or pass `--workers=N`)
+  so e2e actually runs in parallel. See the stack profile's *Parallelism & caching* section.
 
 ---
 

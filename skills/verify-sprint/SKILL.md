@@ -65,11 +65,22 @@ so the **orchestrator does all writes** (the story's status + `verified_date` +
 > the render port / DB**. Dispatch auditors **serially** by default; only run them (or this whole
 > skill alongside `qa-sprint`) in parallel when each has its **own git worktree + stack/port**.
 > Stories whose `design: none-needed` (code-only audit, no render) have no such constraint and may
-> be audited concurrently.
+> be audited concurrently. **Reuse one stack per session** (stack profile's *Render command* note):
+> boot the render server + Supabase once and let `reuseExistingServer` reattach, so serial auditors
+> skip the per-story boot.
+
+**Partition the selected stories by whether they render**, then dispatch each group accordingly:
+- **`design: none-needed` (code-only, no render)** → **fan out in parallel** — these auditors boot no
+  server and touch no port, so spawn them concurrently (a batch of `Agent` calls per message, up to
+  the harness cap) exactly like `code-review-sprint`.
+- **Render-needed** → **serial by default** — they share the render port / stack (see the caveat
+  above); spawn one → await its AUDIT → next, unless each has its own worktree + stack/port.
 
 Spawn each auditor (a general read-only subagent) on `{verify_model}` with the **Per-story audit
-protocol** below, plus `story_id`, the file path, its `design:` paths, and the relevant
-`{design_doc}` / `{tech_spec}` `ui_rules` sections. Each returns one **AUDIT block**.
+protocol** below, plus `story_id`, the file path, its `design:` paths, and **references** to the
+relevant `{design_doc}` / `{tech_spec}` `ui_rules` sections (by role — the auditor opens those docs
+and reads them itself; **don't inline the section bodies** into the spawn prompt, which would
+duplicate them across concurrent `none-needed` audits). Each returns one **AUDIT block**.
 
 ## Per-story audit protocol (runs inside each auditor)
 
@@ -80,7 +91,7 @@ protocol** below, plus `story_id`, the file path, its `design:` paths, and the r
 1. **Read the story's ACs** (with their method tags) and any `## Notes` scope-cuts — a deliberately cut element is **not** a deviation. Read any existing `## Verification Feedback` so you don't re-file a fixed item.
 2. **Read the linked prototype screen(s)** in `{design_dir}` and the governing `{design_doc}` rules. Enumerate the screen's concrete surface: sections, controls, states, featured slots, counts, copy, locked tokens.
 3. **Read the built surface** in `{app_dir}` — cite files+lines that implement (or omit) each item.
-4. **Render and look (visual pass).** Use the stack profile's *Render command* to screenshot the built route, then **view it** against the prototype and the design-doc tokens. Confirm typography family, accent colour, layout fidelity, and the presence of every designed control by eye. If rendering can't run, say so in the AUDIT `screenshots:` line and fall back to a code-only audit (note reduced confidence — don't silently skip).
+4. **Render and look (visual pass).** Use the stack profile's *Render command* (bounded by `timeout {gate_timeout}`, reusing the session stack) to screenshot the built route, then **view it** against the prototype and the design-doc tokens. Confirm typography family, accent colour, layout fidelity, and the presence of every designed control by eye. If rendering can't run **or hits `{gate_timeout}`**, say so in the AUDIT `screenshots:` line and fall back to a code-only audit (note reduced confidence — don't silently skip, and don't hang waiting on a render).
 5. **Classify each gap** per `review-feedback-format.md` (design severity A/B/C/D; tag `[true]`/`[justified]`/`[choice]`), against the precedence rule (tech spec `ui_rules` outranks the prototype). Only **`[true]` of severity A/B/C blocks**; a `[true]` **D** (copy/cosmetic nit) is a logged `> nit [D]:` note, not a gate failure. Verify any built-in justification claim against the tech spec.
 6. **Return the AUDIT block.**
 
@@ -114,7 +125,7 @@ For each audited story (orchestrator-only — auditors wrote nothing):
    - ≥1 blocking item → `status: tested → verification-failed`.
    - Either way stamp `verified_date: <today>`.
 3. **Surface `[choice]` findings to the user** — print them as open decisions; do **not** auto-write them as actionable `- [ ]` items. Once the user decides, a follow-up `/verify-sprint <id>` or `/manage-stories` turns the decision into a `[true]` item or a note.
-4. **Print a summary:** stories audited, `verified` vs `verification-failed`, `[true]` findings by severity (now sitting in each story's Verification Feedback), `[choice]` decisions awaiting the user, code-only audits to re-run. Point `verification-failed` stories at `/execute-sprint <N>` to fix and re-`done` (→ re-flow the gauntlet), then `/verify-sprint --reverify`. End with: "run `/manage-stories index` to refresh the board."
+4. **Print a summary:** stories audited, `verified` vs `verification-failed`, `[true]` findings by severity (now sitting in each story's Verification Feedback), `[choice]` decisions awaiting the user, code-only audits to re-run. Point `verification-failed` stories at `/execute-sprint <N>` to fix and re-`done` (→ re-flow the gauntlet), then `/verify-sprint --reverify`. End with: "run `/manage-stories index` to refresh the board, then `/clear` before the next sprint or re-flow pass — each stage runs fresh from `status`, so clearing keeps the orchestrator lean."
 
 ## The killer self-test
 
@@ -133,6 +144,7 @@ audit that rubber-stamps is worse than none.
 - **The only status move is `tested → verified | verification-failed`** — never revert to an earlier state, never touch a non-`tested` story.
 - **`verification-failed` ⇔ ≥1 open blocking item** (`[true]` A/B/C); a `[true]` D nit, `[justified]`, or `[choice]` never forces it.
 - **Never regenerate `{index_path}`** (parallel-chain skill) — only stamp the story's frontmatter + section. **Idempotent re-runs** (skip `verified` unless `--reverify`). **Never invent a sprint.**
+- **Safe to interrupt.** State lives in story frontmatter — selection is by `status: tested`, so stop anytime (the render pass is serial and slow), `/clear`, and re-run `/verify-sprint <N>`: it resumes from where it stopped (already-`verified` stories are skipped).
 
 ## Files this skill touches
 

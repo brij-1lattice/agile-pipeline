@@ -66,6 +66,16 @@ These are the design decisions that span multiple files. Breaking one silently c
    dev/DB port — true cross-session parallelism needs git-worktree + per-stack isolation. The QA skills
    deliberately **never write `INDEX.md`** (to avoid racing on it); `manage-stories index` is the sole
    writer of the board. Preserve both properties when editing a QA skill.
+   **One carve-out — `generate-test-sprint` fans out its authors *within* a run without worktrees.**
+   Test *authoring* needs no port and each `qa-test-author` writes a distinct QA-namespace file, so the
+   authors run **in parallel** and the only shared resource — git — is deferred: authors are write-only,
+   and the orchestrator does a single `typecheck`/`lint` pass + **one bulk commit** after they return.
+   (Cross-*session* parallelism of the whole skill still needs a worktree.) This is the one place a QA
+   skill commits to `{app_dir}`; the other three never write the repo from the orchestrator.
+   The **read-only** stages dispatch in parallel by design — `code-review-sprint` (reviewers never
+   write) and `verify-sprint`'s `design: none-needed` **code-only** audits (no render, no port) both
+   fan out concurrently; only `verify-sprint`'s *render* audits and the `qa-sprint` runners stay serial
+   (shared port/stack). Don't "fix" the read-only fan-out back to one-at-a-time.
 
 5. **Self-healing via executable failure states.** A `*-failed` story carries open `- [ ]` blocking items
    in its own feedback section (no separate ledger). `/execute-sprint` picks these up, fixes them in place,
@@ -76,7 +86,16 @@ These are the design decisions that span multiple files. Breaking one silently c
    `sprint-story-builder` per assistant message and awaits its `RESULT` before the next — builders share
    one `{app_dir}` branch and concurrent ones corrupt the tree (and escalation's `git checkout -- .` /
    `git clean -fd` would wipe a sibling's work). This **overrides** the general "batch agents for speed"
-   guidance. Never weaken it.
+   guidance. Never weaken it. (`qa-sprint` runners and `verify-sprint` auditors stay serial too — shared
+   dev/DB port. Only `generate-test-sprint`'s write-only authors parallelize — see #4.)
+
+   **Liveness — a hung worker must never stall the orchestrator.** While awaiting a subagent the
+   orchestrator is blocked *inside* the Agent tool-call and can't poll or kill it, so hangs are
+   prevented at the source: every gate/test/render command is non-watch and wrapped in
+   `timeout {gate_timeout}` (stack profile + config), and every worker carries a **liveness contract**
+   — always emit a `RESULT`, even on a `timeout`-kill (exit `124`) or unrecoverable state. The
+   orchestrators define a **no-RESULT recovery** (mark the story `blocked`/`infra-blocked` and continue,
+   never re-await a dead child). When editing a worker agent or a dispatch loop, keep both halves.
 
 7. **Verify-never-summarize for judgment findings.** Code-review and verification findings must cite exact
    `file:line` on **both** sides (the build defect and the contract it violates). This rule exists because

@@ -49,8 +49,9 @@ story `testing-failed`.
 ## Item formats
 
 Each open finding is one checkbox line. `[justified]`/`[choice]` items are `>`-quoted notes
-beneath (not checkboxes). When a re-run fixes an item the builder flips `- [ ]` → `- [x]` (keeping
-the line for history).
+beneath (not checkboxes). When a re-run fixes an item the builder flips `- [ ]` → `- [x]`; on its
+return to `done` those resolved lines are **collapsed** into the section's running tally (below) — git
+is the durable history, not the story body.
 
 ```markdown
 ## Code Review Feedback
@@ -82,6 +83,31 @@ the line for history).
 in). A stage's `--recheck` / `--reverify` re-runs only after the story is `done` again; a clean
 re-audit with every blocking item in that section resolved advances the story to the stage's passed
 status.
+
+## Trimming resolved history
+
+Resolved `- [x]` lines are durable in **git**, not in the story body — keeping every one of them
+verbatim makes the feedback sections grow without bound across re-flow cycles, and the builder
+**re-reads all three sections in full** on every `*-failed` rebuild. So they are collapsed:
+
+- **When the builder returns a story to `done`** (Step 5 of `sprint-story-builder.md`), after clearing
+  the stale downstream date stamps, it folds each section's `- [x]` lines into a single **running
+  tally** at the top of that section and deletes the individual `- [x]` lines:
+
+  ```markdown
+  ## Code Review Feedback
+
+  <!-- written by code-review-sprint; cleared by the next execute-sprint run -->
+  > resolved: 4 items (git history)
+  - [ ] [C] listArticles — page<=0 not handled … · build … vs spec …
+  ```
+
+  The tally is **cumulative** — a later collapse adds to the existing count rather than resetting it.
+- **Never collapsed:** open `- [ ]` items (they are the next run's scope) and the `> nit [D]:` /
+  `> justified:` / `> choice:` notes (non-blocking history that future stages and the user still read).
+- Because the tally is a `>`-quoted note and not a `- [ ]` checkbox, it is invisible to the
+  `passed-with-open` / `stage-failed-empty` lint rules (which key off open checkboxes only) — collapsing
+  never changes a story's gate state, only its size.
 
 ## When a fixed gap invalidates a committed QA test
 
